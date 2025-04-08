@@ -157,7 +157,7 @@ class SettingsAdmin(admin.ModelAdmin):
     def get_readonly_fields(self, request, obj=None):
         # Make API tokens readonly after creation for additional security
         if obj:  # editing an existing object
-            return self.readonly_fields + ('telegram_bot_token', 'telegram_channel_id', 'openai_api_key')
+            return self.readonly_fields + ('telegram_bot_token', 'telegram_channel_id')
         return self.readonly_fields
 
 @admin.register(OpenAISettings)
