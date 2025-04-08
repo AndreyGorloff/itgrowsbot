@@ -1,4 +1,5 @@
 import os
+import asyncio
 from typing import Optional, Dict, Any
 from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -10,6 +11,10 @@ from telegram.ext import (
 from django.conf import settings
 from ..models import Post, Topic, Settings
 import telegram
+import nest_asyncio
+
+# Apply nest_asyncio to allow nested event loops
+nest_asyncio.apply()
 
 class TelegramService:
     """
@@ -24,7 +29,78 @@ class TelegramService:
         self.bot_token = settings_obj.telegram_bot_token
         self.channel_id = settings_obj.telegram_channel_id
         self.bot = telegram.Bot(token=self.bot_token)
-        self.application = Application.builder().token(self.bot_token).build()
+        self.application = None
+        self._loop = None
+
+    def setup_handlers(self):
+        """Setup command and callback handlers."""
+        self.application.add_handler(CommandHandler("start", self.start))
+        self.application.add_handler(CommandHandler("content", self.generate_content))
+        self.application.add_handler(CallbackQueryHandler(self.handle_callback))
+
+    async def _run_bot(self):
+        """Internal method to run the bot."""
+        try:
+            # Initialize application
+            self.application = Application.builder().token(self.bot_token).build()
+            
+            # Setup handlers
+            self.setup_handlers()
+            
+            # Start the bot
+            await self.application.initialize()
+            await self.application.start()
+            await self.application.run_polling(close_loop=False)
+            
+        except Exception as e:
+            print(f"Error in _run_bot: {str(e)}")
+            if self.application and self.application.running:
+                try:
+                    await self.application.stop()
+                except Exception as shutdown_error:
+                    print(f"Error during shutdown: {str(shutdown_error)}")
+            raise
+
+    def run(self):
+        """Run the bot using a dedicated event loop."""
+        try:
+            # Create a new event loop for the bot
+            self._loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self._loop)
+            
+            # Run the bot
+            self._loop.run_until_complete(self._run_bot())
+            
+        except KeyboardInterrupt:
+            print("Bot stopped by user")
+        except Exception as e:
+            print(f"Error running bot: {str(e)}")
+            raise
+        finally:
+            # Clean up without closing the loop
+            if self._loop and self._loop.is_running():
+                self._loop.stop()
+
+    def send_message(self, text, parse_mode='HTML'):
+        """
+        Отправляет сообщение в канал
+        """
+        return self.bot.send_message(
+            chat_id=self.channel_id,
+            text=text,
+            parse_mode=parse_mode
+        )
+    
+    def edit_message(self, message_id, text, parse_mode='HTML'):
+        """
+        Редактирует сообщение в канале
+        """
+        return self.bot.edit_message_text(
+            chat_id=self.channel_id,
+            message_id=message_id,
+            text=text,
+            parse_mode=parse_mode
+        )
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle the /start command."""
@@ -134,38 +210,4 @@ class TelegramService:
                 await query.edit_message_text(
                     text=f"{post.content}\n\n❌ Failed to publish: {str(e)}",
                     reply_markup=query.message.reply_markup
-                )
-
-    def setup_handlers(self):
-        """Setup command and callback handlers."""
-        self.application.add_handler(CommandHandler("start", self.start))
-        self.application.add_handler(CommandHandler("content", self.generate_content))
-        self.application.add_handler(CallbackQueryHandler(self.handle_callback))
-
-    async def run(self):
-        """Run the bot."""
-        self.setup_handlers()
-        await self.application.initialize()
-        await self.application.start()
-        await self.application.run_polling()
-
-    def send_message(self, text, parse_mode='HTML'):
-        """
-        Отправляет сообщение в канал
-        """
-        return self.bot.send_message(
-            chat_id=self.channel_id,
-            text=text,
-            parse_mode=parse_mode
-        )
-    
-    def edit_message(self, message_id, text, parse_mode='HTML'):
-        """
-        Редактирует сообщение в канале
-        """
-        return self.bot.edit_message_text(
-            chat_id=self.channel_id,
-            message_id=message_id,
-            text=text,
-            parse_mode=parse_mode
-        ) 
+                ) 
