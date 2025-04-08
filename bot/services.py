@@ -1,11 +1,23 @@
 import openai
 from django.conf import settings
+from .models import OpenAISettings
+from .services.openai_service import OpenAIService
 
 def generate_article(topic):
     """
     Генерирует статью на основе заданного топика
     """
-    openai.api_key = settings.OPENAI_API_KEY
+    return OpenAIService.generate_article(topic)
+
+def generate_article_old(topic):
+    """
+    Генерирует статью на основе заданного топика
+    """
+    openai_settings = OpenAISettings.get_active()
+    if not openai_settings:
+        raise ValueError("OpenAI settings not configured. Please configure OpenAI settings in admin panel.")
+    
+    openai.api_key = openai_settings.api_key
     
     prompt = f"""
     Напиши информативную статью на тему "{topic}".
@@ -15,13 +27,13 @@ def generate_article(topic):
     """
     
     response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
+        model=openai_settings.model,
         messages=[
             {"role": "system", "content": "Ты - опытный копирайтер, который пишет информативные статьи."},
             {"role": "user", "content": prompt}
         ],
-        temperature=0.7,
-        max_tokens=2000
+        temperature=openai_settings.temperature,
+        max_tokens=openai_settings.max_tokens
     )
     
     content = response.choices[0].message.content

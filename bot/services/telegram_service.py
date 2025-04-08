@@ -9,16 +9,22 @@ from telegram.ext import (
 )
 from django.conf import settings
 from ..models import Post, Topic, Settings
+import telegram
 
 class TelegramService:
+    """
+    Сервис для работы с Telegram API
+    """
+    
     def __init__(self):
         settings_obj = Settings.get_active()
         if not settings_obj:
-            raise ValueError("No active settings found in database")
-            
-        self.bot = Bot(token=settings_obj.telegram_bot_token)
+            raise ValueError("Telegram settings not configured. Please configure Telegram settings in admin panel.")
+        
+        self.bot_token = settings_obj.telegram_bot_token
         self.channel_id = settings_obj.telegram_channel_id
-        self.application = Application.builder().token(settings_obj.telegram_bot_token).build()
+        self.bot = telegram.Bot(token=self.bot_token)
+        self.application = Application.builder().token(self.bot_token).build()
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle the /start command."""
@@ -48,11 +54,10 @@ class TelegramService:
 
             # Generate content using OpenAI
             from .openai_service import OpenAIService
-            openai_service = OpenAIService()
-            content = openai_service.generate_content(
-                topic=topic.title,
+            content = OpenAIService.generate_content(
+                topic=topic.name,
                 description=topic.description,
-                language=topic.language
+                language=topic.language if hasattr(topic, 'language') else 'ru'
             )
 
             if not content:
@@ -63,7 +68,7 @@ class TelegramService:
             post = Post.objects.create(
                 topic=topic,
                 content=content,
-                language=topic.language,
+                language=topic.language if hasattr(topic, 'language') else 'ru',
                 created_by=update.effective_user
             )
 
@@ -98,9 +103,8 @@ class TelegramService:
         if action == "regenerate":
             # Regenerate content
             from .openai_service import OpenAIService
-            openai_service = OpenAIService()
-            new_content = openai_service.generate_content(
-                topic=post.topic.title,
+            new_content = OpenAIService.generate_content(
+                topic=post.topic.name,
                 description=post.topic.description,
                 language=post.language
             )
@@ -143,4 +147,25 @@ class TelegramService:
         self.setup_handlers()
         await self.application.initialize()
         await self.application.start()
-        await self.application.run_polling() 
+        await self.application.run_polling()
+
+    def send_message(self, text, parse_mode='HTML'):
+        """
+        Отправляет сообщение в канал
+        """
+        return self.bot.send_message(
+            chat_id=self.channel_id,
+            text=text,
+            parse_mode=parse_mode
+        )
+    
+    def edit_message(self, message_id, text, parse_mode='HTML'):
+        """
+        Редактирует сообщение в канале
+        """
+        return self.bot.edit_message_text(
+            chat_id=self.channel_id,
+            message_id=message_id,
+            text=text,
+            parse_mode=parse_mode
+        ) 

@@ -2,19 +2,30 @@ import os
 from typing import Optional
 from openai import OpenAI
 from django.conf import settings
-from ..models import Settings
+from ..models import Settings, OpenAISettings
 
 class OpenAIService:
-    def __init__(self):
-        settings_obj = Settings.get_active()
-        if not settings_obj:
-            raise ValueError("No active settings found in database")
-            
-        self.client = OpenAI(api_key=settings_obj.openai_api_key)
-        self.model = "gpt-4-turbo-preview"  # or your preferred model
+    @classmethod
+    def get_settings(cls):
+        """
+        Получение активных настроек OpenAI
+        """
+        openai_settings = OpenAISettings.get_active()
+        if not openai_settings:
+            raise ValueError("OpenAI settings not configured. Please configure OpenAI settings in admin panel.")
+        return openai_settings
 
+    @classmethod
+    def get_client(cls):
+        """
+        Получение клиента OpenAI API
+        """
+        openai_settings = cls.get_settings()
+        return OpenAI(api_key=openai_settings.api_key)
+        
+    @classmethod
     def generate_content(
-        self,
+        cls,
         topic: str,
         description: str,
         language: str = 'ru',
@@ -33,18 +44,21 @@ class OpenAIService:
             Generated content as string or None if generation failed
         """
         try:
+            openai_settings = cls.get_settings()
+            client = cls.get_client()
+            
             # Construct the prompt based on parameters
-            prompt = self._construct_prompt(topic, description, language, style)
+            prompt = cls._construct_prompt(topic, description, language, style)
             
             # Generate content using OpenAI API
-            response = self.client.chat.completions.create(
-                model=self.model,
+            response = client.chat.completions.create(
+                model=openai_settings.model,
                 messages=[
                     {"role": "system", "content": "You are a professional content creator."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.7,
-                max_tokens=2000
+                temperature=openai_settings.temperature,
+                max_tokens=openai_settings.max_tokens
             )
             
             return response.choices[0].message.content.strip()
@@ -53,8 +67,9 @@ class OpenAIService:
             print(f"Error generating content: {str(e)}")
             return None
 
+    @classmethod
     def _construct_prompt(
-        self,
+        cls,
         topic: str,
         description: str,
         language: str,
@@ -84,4 +99,47 @@ class OpenAIService:
         - Suitable for social media
         
         Format the text with appropriate paragraphs and sections.
-        """ 
+        """
+    
+    @classmethod
+    def generate_article(cls, topic):
+        """
+        Генерирует статью на основе заданного топика
+        """
+        try:
+            openai_settings = cls.get_settings()
+            client = cls.get_client()
+            
+            prompt = f"""
+            Напиши информативную статью на тему "{topic}".
+            Статья должна быть структурированной, с заголовками и подзаголовками.
+            Используй маркированные списки где это уместно.
+            Статья должна быть написана в формате HTML.
+            """
+            
+            response = client.chat.completions.create(
+                model=openai_settings.model,
+                messages=[
+                    {"role": "system", "content": "Ты - опытный копирайтер, который пишет информативные статьи."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=openai_settings.temperature,
+                max_tokens=openai_settings.max_tokens
+            )
+            
+            content = response.choices[0].message.content
+            
+            # Извлекаем заголовок из первого h1 или h2 тега
+            title = topic
+            if "<h1>" in content:
+                title = content.split("<h1>")[1].split("</h1>")[0]
+            elif "<h2>" in content:
+                title = content.split("<h2>")[1].split("</h2>")[0]
+            
+            return {
+                'title': title,
+                'content': content
+            }
+        except Exception as e:
+            print(f"Error generating article: {str(e)}")
+            raise 

@@ -85,11 +85,6 @@ class Settings(models.Model):
         max_length=255,
         help_text=_('Channel ID where posts will be published')
     )
-    openai_api_key = models.CharField(
-        _('OpenAI API Key'),
-        max_length=255,
-        help_text=_('API key from OpenAI platform')
-    )
     is_active = models.BooleanField(
         _('Is Active'),
         default=True,
@@ -106,8 +101,8 @@ class Settings(models.Model):
     )
 
     class Meta:
-        verbose_name = _('Settings')
-        verbose_name_plural = _('Settings')
+        verbose_name = _('Telegram Settings')
+        verbose_name_plural = _('Telegram Settings')
         ordering = ['-created_at']
 
     def clean(self):
@@ -123,6 +118,69 @@ class Settings(models.Model):
 
     def __str__(self):
         return f"Settings {self.created_at.strftime('%Y-%m-%d %H:%M')}"
+
+    @classmethod
+    def get_active(cls):
+        """Get the active settings instance."""
+        return cls.objects.filter(is_active=True).first()
+
+class OpenAISettings(models.Model):
+    """OpenAI API settings."""
+    
+    api_key = models.CharField(
+        _('API Key'),
+        max_length=255,
+        help_text=_('API key from OpenAI platform')
+    )
+    model = models.CharField(
+        _('Model'),
+        max_length=50,
+        default='gpt-3.5-turbo',
+        help_text=_('OpenAI model to use for generation')
+    )
+    temperature = models.FloatField(
+        _('Temperature'),
+        default=0.7,
+        help_text=_('Controls randomness in the output (0.0-1.0)')
+    )
+    max_tokens = models.IntegerField(
+        _('Max Tokens'),
+        default=2000,
+        help_text=_('Maximum number of tokens in the response')
+    )
+    is_active = models.BooleanField(
+        _('Is Active'),
+        default=True,
+        help_text=_('Only one settings instance can be active')
+    )
+    created_at = models.DateTimeField(_('Created at'), auto_now_add=True)
+    updated_at = models.DateTimeField(_('Updated at'), auto_now=True)
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='openai_settings',
+        verbose_name=_('Created by')
+    )
+
+    class Meta:
+        verbose_name = _('OpenAI Settings')
+        verbose_name_plural = _('OpenAI Settings')
+        ordering = ['-created_at']
+
+    def clean(self):
+        """Ensure only one active settings instance exists."""
+        if self.is_active and not self.pk and OpenAISettings.objects.filter(is_active=True).exists():
+            raise ValidationError(_('There can be only one active settings instance.'))
+
+    def save(self, *args, **kwargs):
+        if self.is_active:
+            # Deactivate other settings
+            OpenAISettings.objects.exclude(pk=self.pk).update(is_active=False)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"OpenAI Settings {self.created_at.strftime('%Y-%m-%d %H:%M')}"
 
     @classmethod
     def get_active(cls):

@@ -18,12 +18,11 @@ def generate_content_for_topic(topic_id: int, style: str = 'expert') -> bool:
     """
     try:
         topic = Topic.objects.get(id=topic_id)
-        openai_service = OpenAIService()
         
-        content = openai_service.generate_content(
-            topic=topic.title,
+        content = OpenAIService.generate_content(
+            topic=topic.name,
             description=topic.description,
-            language=topic.language,
+            language=topic.language if hasattr(topic, 'language') else 'ru',
             style=style
         )
         
@@ -31,8 +30,8 @@ def generate_content_for_topic(topic_id: int, style: str = 'expert') -> bool:
             Post.objects.create(
                 topic=topic,
                 content=content,
-                language=topic.language,
-                created_by=topic.created_by
+                language=topic.language if hasattr(topic, 'language') else 'ru',
+                created_by=topic.created_by if hasattr(topic, 'created_by') else None
             )
             return True
             

@@ -5,14 +5,14 @@ from django.contrib import messages
 from django.urls import path
 from django.shortcuts import render, redirect
 from django.http import HttpResponseRedirect
-from .models import Topic, Post, Settings
+from .models import Topic, Post, Settings, OpenAISettings
 from .services import generate_article
 from django.urls import reverse
 from django.utils.html import format_html
 
 @admin.register(Topic)
 class TopicAdmin(admin.ModelAdmin):
-    list_display = ('name', 'is_active', 'created_at', 'updated_at')
+    list_display = ('name', 'is_active', 'created_at', 'updated_at', 'generate_article_link')
     list_filter = ('is_active', 'created_at')
     search_fields = ('name', 'description')
     readonly_fields = ('created_at', 'updated_at')
@@ -35,7 +35,8 @@ class TopicAdmin(admin.ModelAdmin):
             Post.objects.create(
                 title=article['title'],
                 content=article['content'],
-                topic=topic
+                topic=topic,
+                created_by=request.user
             )
             messages.success(request, f'Статья успешно сгенерирована для топика "{topic.name}"')
         except Exception as e:
@@ -95,7 +96,7 @@ class PostAdmin(admin.ModelAdmin):
     actions = ['mark_as_published', 'mark_as_draft', 'regenerate_content']
 
     def save_model(self, request, obj, form, change):
-        if not change:  # If creating new object
+        if not obj.pk:  # Only set created_by during the first save.
             obj.created_by = request.user
         super().save_model(request, obj, form, change)
 
@@ -132,25 +133,12 @@ class PostAdmin(admin.ModelAdmin):
 
 @admin.register(Settings)
 class SettingsAdmin(admin.ModelAdmin):
-    list_display = ('created_by', 'is_active', 'created_at', 'updated_at')
+    list_display = ('telegram_channel_id', 'is_active', 'created_at', 'updated_at')
+    list_filter = ('is_active',)
     readonly_fields = ('created_at', 'updated_at', 'created_by')
-    fieldsets = (
-        (_('API Tokens'), {
-            'fields': ('telegram_bot_token', 'telegram_channel_id', 'openai_api_key'),
-            'classes': ('collapse',),
-            'description': _('API tokens for external services. Keep these secure!')
-        }),
-        (_('Status'), {
-            'fields': ('is_active',),
-        }),
-        (_('Metadata'), {
-            'fields': ('created_by', 'created_at', 'updated_at'),
-            'classes': ('collapse',),
-        }),
-    )
-
+    
     def save_model(self, request, obj, form, change):
-        if not change:  # If creating new object
+        if not obj.pk:  # Only set created_by during the first save.
             obj.created_by = request.user
         super().save_model(request, obj, form, change)
 
@@ -170,4 +158,15 @@ class SettingsAdmin(admin.ModelAdmin):
         # Make API tokens readonly after creation for additional security
         if obj:  # editing an existing object
             return self.readonly_fields + ('telegram_bot_token', 'telegram_channel_id', 'openai_api_key')
-        return self.readonly_fields 
+        return self.readonly_fields
+
+@admin.register(OpenAISettings)
+class OpenAISettingsAdmin(admin.ModelAdmin):
+    list_display = ('model', 'temperature', 'max_tokens', 'is_active', 'created_at', 'updated_at')
+    list_filter = ('is_active', 'model')
+    readonly_fields = ('created_at', 'updated_at', 'created_by')
+    
+    def save_model(self, request, obj, form, change):
+        if not obj.pk:  # Only set created_by during the first save.
+            obj.created_by = request.user
+        super().save_model(request, obj, form, change) 
