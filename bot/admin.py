@@ -2,15 +2,67 @@ from django.contrib import admin
 from django.utils.translation import gettext_lazy as _
 from django.utils import timezone
 from django.contrib import messages
+from django.urls import path
+from django.shortcuts import render, redirect
+from django.http import HttpResponseRedirect
 from .models import Topic, Post, Settings
+from .services import generate_article
+from django.urls import reverse
+from django.utils.html import format_html
 
 @admin.register(Topic)
 class TopicAdmin(admin.ModelAdmin):
-    list_display = ('title', 'language', 'created_by', 'created_at')
-    list_filter = ('language', 'created_by', 'created_at')
-    search_fields = ('title', 'description')
-    readonly_fields = ('created_at',)
-    ordering = ('-created_at',)
+    list_display = ('name', 'is_active', 'created_at', 'updated_at')
+    list_filter = ('is_active', 'created_at')
+    search_fields = ('name', 'description')
+    readonly_fields = ('created_at', 'updated_at')
+    
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                '<int:topic_id>/generate-article/',
+                self.admin_site.admin_view(self.generate_article),
+                name='topic-generate-article',
+            ),
+        ]
+        return custom_urls + urls
+
+    def generate_article(self, request, topic_id):
+        topic = Topic.objects.get(id=topic_id)
+        try:
+            article = generate_article(topic.name)
+            Post.objects.create(
+                title=article['title'],
+                content=article['content'],
+                topic=topic
+            )
+            messages.success(request, f'Статья успешно сгенерирована для топика "{topic.name}"')
+        except Exception as e:
+            messages.error(request, f'Ошибка при генерации статьи: {str(e)}')
+        
+        return HttpResponseRedirect(request.META.get('HTTP_REFERER'))
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        if 'delete_selected' in actions:
+            del actions['delete_selected']
+        return actions
+
+    def get_list_display_links(self, request, list_display):
+        return None
+
+    def get_list_display(self, request):
+        list_display = super().get_list_display(request)
+        return list_display + ('generate_article_link',)
+
+    def generate_article_link(self, obj):
+        return format_html(
+            '<a class="button" href="{}">Сгенерировать статью</a>',
+            reverse('admin:topic-generate-article', args=[obj.id])
+        )
+    generate_article_link.short_description = 'Действия'
+    generate_article_link.allow_tags = True
 
     def save_model(self, request, obj, form, change):
         if not change:  # If creating new object

@@ -4,40 +4,30 @@ from django.utils.translation import gettext_lazy as _
 from django.core.exceptions import ValidationError
 
 class Topic(models.Model):
-    LANGUAGE_CHOICES = [
-        ('ru', 'Russian'),
-        ('en', 'English'),
-    ]
-
-    title = models.CharField(_('Title'), max_length=200)
-    description = models.TextField(_('Description'))
-    language = models.CharField(
-        _('Language'),
-        max_length=2,
-        choices=LANGUAGE_CHOICES,
-        default='ru'
-    )
-    created_by = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        related_name='topics',
-        verbose_name=_('Created by')
-    )
-    created_at = models.DateTimeField(_('Created at'), auto_now_add=True)
+    name = models.CharField(max_length=255, verbose_name='Название топика', default='Новый топик')
+    description = models.TextField(verbose_name='Описание топика', blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата создания')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='Дата обновления')
+    is_active = models.BooleanField(default=True, verbose_name='Активен')
 
     class Meta:
-        verbose_name = _('Topic')
-        verbose_name_plural = _('Topics')
+        verbose_name = 'Топик'
+        verbose_name_plural = 'Топики'
         ordering = ['-created_at']
 
     def __str__(self):
-        return self.title
+        return self.name
 
 class Post(models.Model):
     STATUS_CHOICES = [
         ('draft', _('Draft')),
         ('published', _('Published')),
         ('failed', _('Failed')),
+    ]
+
+    LANGUAGE_CHOICES = [
+        ('ru', 'Russian'),
+        ('en', 'English'),
     ]
 
     topic = models.ForeignKey(
@@ -50,7 +40,7 @@ class Post(models.Model):
     language = models.CharField(
         _('Language'),
         max_length=2,
-        choices=Topic.LANGUAGE_CHOICES,
+        choices=LANGUAGE_CHOICES,
         default='ru'
     )
     status = models.CharField(
@@ -80,7 +70,7 @@ class Post(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"{self.topic.title} - {self.created_at.strftime('%Y-%m-%d %H:%M')}"
+        return f"{self.topic.name} - {self.created_at.strftime('%Y-%m-%d %H:%M')}"
 
 class Settings(models.Model):
     """Global settings for the application."""

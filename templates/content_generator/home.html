@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-5">
+    <h1>Welcome to Content Generator</h1>
+    <p class="lead">This is a platform for generating and managing content.</p>
+    
+    {% if user.is_authenticated %}
+        <p>You are logged in as {{ user.username }}.</p>
+        <a href="{% url 'account_logout' %}" class="btn btn-danger">Logout</a>
+    {% else %}
+        <p>Please <a href="{% url 'account_login' %}">login</a> to access the platform.</p>
+    {% endif %}
+</div>
+{% endblock %} 

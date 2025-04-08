@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row">
+        <div class="col-md-8 offset-md-2">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Profile</h2>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <h4>Username</h4>
+                        <p>{{ user.username }}</p>
+                    </div>
+                    <div class="mb-3">
+                        <h4>Email</h4>
+                        <p>{{ user.email }}</p>
+                    </div>
+                    <div class="mb-3">
+                        <h4>Date Joined</h4>
+                        <p>{{ user.date_joined|date:"F j, Y" }}</p>
+                    </div>
+                    <div class="mb-3">
+                        <h4>Last Login</h4>
+                        <p>{{ user.last_login|date:"F j, Y, g:i a" }}</p>
+                    </div>
+                    <div class="mt-4">
+                        <a href="{% url 'account_change_password' %}" class="btn btn-primary">Change Password</a>
+                        <a href="{% url 'account_email' %}" class="btn btn-secondary">Manage Email</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

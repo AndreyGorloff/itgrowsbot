@@ -12,6 +12,8 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     postgresql-client \
     netcat-traditional \
+    gcc \
+    python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
@@ -25,7 +27,7 @@ COPY . .
 RUN chmod +x /app/docker-entrypoint.sh
 
 # Create necessary directories
-RUN mkdir -p /app/staticfiles /app/media
+RUN mkdir -p /app/staticfiles /app/media /app/static
 
 # Set entrypoint
 ENTRYPOINT ["/app/docker-entrypoint.sh"]

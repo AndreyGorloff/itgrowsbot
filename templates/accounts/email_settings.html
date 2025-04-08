@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row">
+        <div class="col-md-3">
+            <div class="list-group">
+                <a href="{% url 'profile' %}" class="list-group-item list-group-item-action">Profile</a>
+                <a href="{% url 'settings' %}" class="list-group-item list-group-item-action">General Settings</a>
+                <a href="{% url 'notifications' %}" class="list-group-item list-group-item-action">Notifications</a>
+                <a href="{% url 'security' %}" class="list-group-item list-group-item-action">Security</a>
+                <a href="{% url 'email_settings' %}" class="list-group-item list-group-item-action active">Email Settings</a>
+            </div>
+        </div>
+        <div class="col-md-9">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Email Settings</h2>
+                </div>
+                <div class="card-body">
+                    {% if messages %}
+                        {% for message in messages %}
+                            <div class="alert alert-{{ message.tags }}">
+                                {{ message }}
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                    
+                    <h4>Add Email Address</h4>
+                    <form method="post">
+                        {% csrf_token %}
+                        <div class="mb-3">
+                            {{ form.email.label_tag }}
+                            {{ form.email }}
+                            {% if form.email.errors %}
+                                <div class="alert alert-danger">
+                                    {{ form.email.errors }}
+                                </div>
+                            {% endif %}
+                        </div>
+                        <button type="submit" class="btn btn-primary">Add Email</button>
+                    </form>
+                    
+                    <hr>
+                    
+                    <h4>Email Addresses</h4>
+                    {% if user.emailaddress_set.all %}
+                        <div class="table-responsive">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Email</th>
+                                        <th>Status</th>
+                                        <th>Primary</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for emailaddress in user.emailaddress_set.all %}
+                                        <tr>
+                                            <td>{{ emailaddress.email }}</td>
+                                            <td>
+                                                {% if emailaddress.verified %}
+                                                    <span class="badge bg-success">Verified</span>
+                                                {% else %}
+                                                    <span class="badge bg-warning">Unverified</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if emailaddress.primary %}
+                                                    <span class="badge bg-primary">Primary</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if not emailaddress.primary %}
+                                                    <form method="post" action="{% url 'account_primary_email' %}" style="display: inline;">
+                                                        {% csrf_token %}
+                                                        <input type="hidden" name="email" value="{{ emailaddress.email }}">
+                                                        <button type="submit" class="btn btn-sm btn-primary">Make Primary</button>
+                                                    </form>
+                                                {% endif %}
+                                                <form method="post" action="{% url 'account_remove_email' %}" style="display: inline;">
+                                                    {% csrf_token %}
+                                                    <input type="hidden" name="email" value="{{ emailaddress.email }}">
+                                                    <button type="submit" class="btn btn-sm btn-danger">Remove</button>
+                                                </form>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <p>No email addresses added yet.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

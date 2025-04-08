@@ -3,7 +3,7 @@ version: '3.8'
 services:
   web:
     build: .
-    command: gunicorn content_generator.wsgi:application --bind 0.0.0.0:8000
+    command: gunicorn content_generator.wsgi:application --config gunicorn_config.py
     volumes:
       - .:/app
       - static_volume:/app/staticfiles
@@ -21,7 +21,7 @@ services:
       - app_network
 
   db:
-    image: postgres:13
+    image: postgres:14
     volumes:
       - postgres_data:/var/lib/postgresql/data/
     environment:
