@@ -30,7 +30,6 @@ class TelegramService:
         self.channel_id = settings_obj.telegram_channel_id
         self.bot = telegram.Bot(token=self.bot_token)
         self.application = None
-        self._loop = None
 
     def setup_handlers(self):
         """Setup command and callback handlers."""
@@ -38,8 +37,8 @@ class TelegramService:
         self.application.add_handler(CommandHandler("content", self.generate_content))
         self.application.add_handler(CallbackQueryHandler(self.handle_callback))
 
-    async def _run_bot(self):
-        """Internal method to run the bot."""
+    async def start_bot(self):
+        """Start the bot."""
         try:
             # Initialize application
             self.application = Application.builder().token(self.bot_token).build()
@@ -53,33 +52,29 @@ class TelegramService:
             await self.application.run_polling(close_loop=False)
             
         except Exception as e:
-            print(f"Error in _run_bot: {str(e)}")
+            print(f"Error starting bot: {str(e)}")
             if self.application and self.application.running:
-                try:
-                    await self.application.stop()
-                except Exception as shutdown_error:
-                    print(f"Error during shutdown: {str(shutdown_error)}")
+                await self.application.stop()
             raise
 
     def run(self):
-        """Run the bot using a dedicated event loop."""
+        """Run the bot."""
         try:
-            # Create a new event loop for the bot
-            self._loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(self._loop)
+            # Get or create event loop
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
             
             # Run the bot
-            self._loop.run_until_complete(self._run_bot())
+            loop.run_until_complete(self.start_bot())
             
         except KeyboardInterrupt:
             print("Bot stopped by user")
         except Exception as e:
             print(f"Error running bot: {str(e)}")
             raise
-        finally:
-            # Clean up without closing the loop
-            if self._loop and self._loop.is_running():
-                self._loop.stop()
 
     def send_message(self, text, parse_mode='HTML'):
         """

@@ -1,4 +1,5 @@
 import time
+import signal
 from django.core.management.base import BaseCommand
 from django.db import connections
 from django.db.utils import OperationalError
@@ -35,8 +36,9 @@ class Command(BaseCommand):
             bot = TelegramService()
             bot.run()
             
+        except KeyboardInterrupt:
+            self.stdout.write(self.style.SUCCESS('Bot stopped by user'))
         except Exception as e:
             self.stdout.write(self.style.ERROR(f'Error running bot: {str(e)}'))
-            return
-            
-        self.stdout.write(self.style.SUCCESS('Bot stopped')) 
+        finally:
+            self.stdout.write(self.style.SUCCESS('Bot stopped')) 
