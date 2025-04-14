@@ -1,5 +1,6 @@
 import os
 import asyncio
+import logging
 from typing import Optional, Dict, Any
 from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -12,6 +13,8 @@ from django.conf import settings
 from ..models import Post, Topic, Settings
 import telegram
 import nest_asyncio
+
+logger = logging.getLogger(__name__)
 
 # Apply nest_asyncio to allow nested event loops
 nest_asyncio.apply()
@@ -30,6 +33,7 @@ class TelegramService:
         self.channel_id = settings_obj.telegram_channel_id
         self.bot = telegram.Bot(token=self.bot_token)
         self.application = None
+        self._loop = None
 
     def setup_handlers(self):
         """Setup command and callback handlers."""
@@ -40,6 +44,7 @@ class TelegramService:
     async def start_bot(self):
         """Start the bot."""
         try:
+            logger.debug("Initializing bot application...")
             # Initialize application
             self.application = Application.builder().token(self.bot_token).build()
             
@@ -47,34 +52,45 @@ class TelegramService:
             self.setup_handlers()
             
             # Start the bot
+            logger.debug("Starting bot...")
             await self.application.initialize()
-            await self.application.start()
-            await self.application.run_polling(close_loop=False)
+            
+            # Run polling without calling start() again
+            logger.debug("Starting polling...")
+            await self.application.run_polling(close_loop=False, drop_pending_updates=True)
             
         except Exception as e:
-            print(f"Error starting bot: {str(e)}")
+            logger.error(f"Error starting bot: {str(e)}", exc_info=True)
             if self.application and self.application.running:
-                await self.application.stop()
+                try:
+                    await self.application.stop()
+                except Exception as shutdown_error:
+                    logger.error(f"Error during shutdown: {str(shutdown_error)}", exc_info=True)
             raise
 
     def run(self):
         """Run the bot."""
         try:
+            logger.debug("Setting up event loop...")
             # Get or create event loop
             try:
-                loop = asyncio.get_event_loop()
+                self._loop = asyncio.get_event_loop()
             except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
+                self._loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(self._loop)
             
             # Run the bot
-            loop.run_until_complete(self.start_bot())
+            logger.debug("Running bot...")
+            self._loop.run_until_complete(self.start_bot())
             
         except KeyboardInterrupt:
-            print("Bot stopped by user")
+            logger.info("Bot stopped by user")
         except Exception as e:
-            print(f"Error running bot: {str(e)}")
+            logger.error(f"Error running bot: {str(e)}", exc_info=True)
             raise
+        finally:
+            if self._loop and self._loop.is_running():
+                self._loop.stop()
 
     def send_message(self, text, parse_mode='HTML'):
         """

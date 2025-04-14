@@ -1,35 +1,37 @@
 import time
-import signal
+import logging
 from django.core.management.base import BaseCommand
 from django.db import connections
 from django.db.utils import OperationalError
 from bot.services.telegram_service import TelegramService
+
+logger = logging.getLogger(__name__)
 
 class Command(BaseCommand):
     help = 'Runs the Telegram bot'
 
     def wait_for_db(self):
         """Wait for database to be available"""
-        self.stdout.write('Waiting for database...')
+        logger.info('Waiting for database...')
         db_conn = None
         for _ in range(60):  # try for 60 seconds
             try:
                 db_conn = connections['default']
                 db_conn.cursor()
-                self.stdout.write(self.style.SUCCESS('Database available!'))
+                logger.info('Database available!')
                 return True
             except OperationalError:
-                self.stdout.write('Database unavailable, waiting 1 second...')
+                logger.info('Database unavailable, waiting 1 second...')
                 time.sleep(1)
         return False
 
     def handle(self, *args, **options):
-        self.stdout.write('Starting Telegram bot...')
+        logger.info('Starting Telegram bot...')
         
         try:
             # Wait for database
             if not self.wait_for_db():
-                self.stdout.write(self.style.ERROR('Could not connect to database'))
+                logger.error('Could not connect to database')
                 return
 
             # Create and run the bot
@@ -37,8 +39,8 @@ class Command(BaseCommand):
             bot.run()
             
         except KeyboardInterrupt:
-            self.stdout.write(self.style.SUCCESS('Bot stopped by user'))
+            logger.info('Bot stopped by user')
         except Exception as e:
-            self.stdout.write(self.style.ERROR(f'Error running bot: {str(e)}'))
+            logger.error(f'Error running bot: {str(e)}', exc_info=True)
         finally:
-            self.stdout.write(self.style.SUCCESS('Bot stopped')) 
+            logger.info('Bot stopped') 
