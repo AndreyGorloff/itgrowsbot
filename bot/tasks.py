@@ -1,9 +1,12 @@
 from celery import shared_task
 from django.utils import timezone
-from .models import Post, Topic, OpenAISettings, OllamaModel
+from .models import Post, Topic, OpenAISettings, OllamaModel, Settings
 from .services.openai_service import OpenAIService
 from .services.telegram_service import TelegramService
 from django.contrib.auth import get_user_model
+import logging
+
+logger = logging.getLogger(__name__)
 
 @shared_task
 def generate_content_for_topic(topic_id: int, style: str = 'expert') -> bool:
@@ -176,3 +179,52 @@ def generate_article_for_topic(self, topic_id: int, user_id: int) -> int:
     except Exception as e:
         print(f"Error generating article: {str(e)}")
         raise 
+
+@shared_task
+def publish_articles():
+    """
+    Publish articles to Telegram channel based on priority.
+    This task should be run periodically to check for articles
+    that are ready to be published.
+    """
+    try:
+        # Get active settings
+        settings = Settings.objects.filter(is_active=True).first()
+        if not settings:
+            logger.error("No active settings found")
+            return
+
+        # Get the next article to publish
+        article = Post.objects.filter(
+            status='ready',
+            published_at__isnull=True
+        ).order_by('-priority', '-created_at').first()
+
+        if not article:
+            logger.info("No articles ready for publishing")
+            return
+
+        # Initialize Telegram service
+        telegram_service = TelegramService(
+            bot_token=settings.telegram_bot_token,
+            channel_id=settings.telegram_channel_id
+        )
+
+        # Publish the article
+        try:
+            message_id = telegram_service.send_message(article.content)
+            if message_id:
+                article.status = 'published'
+                article.published_at = timezone.now()
+                article.telegram_message_id = message_id
+                article.save()
+                logger.info(f"Successfully published article: {article.topic.name}")
+            else:
+                logger.error(f"Failed to publish article: {article.topic.name}")
+        except Exception as e:
+            logger.error(f"Error publishing article {article.topic.name}: {str(e)}")
+            article.status = 'failed'
+            article.save()
+
+    except Exception as e:
+        logger.error(f"Error in publish_articles task: {str(e)}") 

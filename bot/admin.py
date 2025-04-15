@@ -105,10 +105,10 @@ class OpenAISettingsAdmin(admin.ModelAdmin):
 
 @admin.register(OllamaModel, site=bot_admin_site)
 class OllamaModelAdmin(admin.ModelAdmin):
-    list_display = ('name', 'is_installed', 'is_active', 'created_at', 'updated_at')
-    list_filter = ('is_installed', 'is_active', 'created_at', 'updated_at')
-    readonly_fields = ('created_at', 'updated_at')
-    search_fields = ('name', 'description')
+    list_display = ('name', 'is_installed', 'is_active', 'last_updated')
+    list_filter = ('is_installed', 'is_active')
+    readonly_fields = ('last_updated', 'details')
+    search_fields = ('name',)
     list_display_links = ('name',)
 
 @admin.register(Topic, site=bot_admin_site)
@@ -171,6 +171,7 @@ class PostAdmin(admin.ModelAdmin):
     list_display = (
         'topic',
         'status',
+        'priority',
         'get_progress_display',
         'language',
         'created_by',
@@ -184,14 +185,16 @@ class PostAdmin(admin.ModelAdmin):
         'created_by',
         'edited',
         'created_at',
-        'published_at'
+        'published_at',
+        'priority'
     )
     search_fields = ('content', 'topic__name')
     readonly_fields = ('created_at', 'published_at', 'telegram_message_id', 'progress')
-    ordering = ('-created_at',)
+    ordering = ('-priority', '-created_at')
     list_display_links = ('topic',)
+    list_editable = ('priority',)
     
-    actions = ['mark_as_published', 'mark_as_draft', 'regenerate_content']
+    actions = ['mark_as_published', 'mark_as_draft', 'regenerate_content', 'mark_as_ready']
 
     def get_progress_display(self, obj):
         if obj.status == 'generating':
@@ -233,6 +236,16 @@ class PostAdmin(admin.ModelAdmin):
             }
         )
     mark_as_draft.short_description = _('Mark selected posts as draft')
+
+    def mark_as_ready(self, request, queryset):
+        updated = queryset.update(status='ready')
+        self.message_user(
+            request,
+            _('%(count)d post(s) were successfully marked as ready to publish.') % {
+                'count': updated
+            }
+        )
+    mark_as_ready.short_description = _('Mark selected posts as ready to publish')
 
     def regenerate_content(self, request, queryset):
         self.message_user(

@@ -20,63 +20,41 @@ class Topic(models.Model):
 
 class Post(models.Model):
     STATUS_CHOICES = [
-        ('draft', _('Draft')),
-        ('published', _('Published')),
-        ('failed', _('Failed')),
-        ('generating', _('Generating')),
+        ('draft', 'Draft'),
+        ('generating', 'Generating'),
+        ('ready', 'Ready to Publish'),
+        ('published', 'Published'),
+        ('failed', 'Failed')
     ]
-
+    
     LANGUAGE_CHOICES = [
         ('ru', 'Russian'),
-        ('en', 'English'),
+        ('en', 'English')
     ]
-
-    topic = models.ForeignKey(
-        Topic,
-        on_delete=models.CASCADE,
-        related_name='posts',
-        verbose_name=_('Topic')
-    )
-    content = models.TextField(_('Content'))
-    language = models.CharField(
-        _('Language'),
-        max_length=2,
-        choices=LANGUAGE_CHOICES,
-        default='ru'
-    )
-    status = models.CharField(
-        _('Status'),
-        max_length=10,
-        choices=STATUS_CHOICES,
-        default='draft'
-    )
-    progress = models.IntegerField(
-        _('Generation Progress'),
-        default=0,
-        help_text=_('Progress of content generation (0-100)')
-    )
-    created_by = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        related_name='posts',
-        verbose_name=_('Created by')
-    )
-    created_at = models.DateTimeField(_('Created at'), auto_now_add=True)
-    published_at = models.DateTimeField(_('Published at'), null=True, blank=True)
-    telegram_message_id = models.IntegerField(
-        _('Telegram Message ID'),
-        null=True,
-        blank=True
-    )
-    edited = models.BooleanField(_('Edited'), default=False)
+    
+    topic = models.ForeignKey(Topic, on_delete=models.CASCADE, related_name='posts')
+    content = models.TextField()
+    language = models.CharField(max_length=2, choices=LANGUAGE_CHOICES, default='ru')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+    priority = models.IntegerField(default=0, help_text='Higher number means higher priority')
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='posts')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    published_at = models.DateTimeField(null=True, blank=True)
+    telegram_message_id = models.IntegerField(null=True, blank=True)
+    edited = models.BooleanField(default=False)
+    progress = models.IntegerField(default=0, help_text='Generation progress in percentage')
 
     class Meta:
-        verbose_name = _('Post')
-        verbose_name_plural = _('Posts')
-        ordering = ['-created_at']
+        ordering = ['-priority', '-created_at']
+        verbose_name = 'Post'
+        verbose_name_plural = 'Posts'
 
     def __str__(self):
-        return f"{self.topic.name} - {self.created_at.strftime('%Y-%m-%d %H:%M')}"
+        return f"{self.topic.name} - {self.get_status_display()}"
+
+    def get_status_display(self):
+        return dict(self.STATUS_CHOICES).get(self.status, self.status)
 
 class Settings(models.Model):
     """Global settings for the application."""
