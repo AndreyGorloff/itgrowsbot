@@ -125,64 +125,88 @@ class Settings(models.Model):
         return cls.objects.filter(is_active=True).first()
 
 class OpenAISettings(models.Model):
-    """OpenAI API settings."""
-    
+    """
+    Настройки для OpenAI API и локальной LLM модели
+    """
     api_key = models.CharField(
-        _('API Key'),
         max_length=255,
-        help_text=_('API key from OpenAI platform')
+        verbose_name=_('OpenAI API Key'),
+        help_text=_('API ключ для доступа к OpenAI')
     )
-    model = models.CharField(
-        _('Model'),
-        max_length=50,
-        default='gpt-3.5-turbo',
-        help_text=_('OpenAI model to use for generation')
+    
+    # Настройки для локальной модели
+    use_local_model = models.BooleanField(
+        default=False,
+        verbose_name=_('Use Local Model'),
+        help_text=_('Использовать локальную модель вместо OpenAI')
     )
+    
+    local_model_name = models.CharField(
+        max_length=100,
+        default='llama2',
+        verbose_name=_('Local Model Name'),
+        help_text=_('Название локальной модели Ollama')
+    )
+    
+    # Параметры генерации
     temperature = models.FloatField(
-        _('Temperature'),
         default=0.7,
-        help_text=_('Controls randomness in the output (0.0-1.0)')
+        verbose_name=_('Temperature'),
+        help_text=_('Температура генерации (0-1)')
     )
+    
     max_tokens = models.IntegerField(
-        _('Max Tokens'),
-        default=2000,
-        help_text=_('Maximum number of tokens in the response')
+        default=500,
+        verbose_name=_('Max Tokens'),
+        help_text=_('Максимальное количество токенов')
     )
+    
+    top_p = models.FloatField(
+        default=0.9,
+        verbose_name=_('Top P'),
+        help_text=_('Параметр top_p (0-1)')
+    )
+    
+    presence_penalty = models.FloatField(
+        default=0.6,
+        verbose_name=_('Presence Penalty'),
+        help_text=_('Штраф за повторение тем')
+    )
+    
+    frequency_penalty = models.FloatField(
+        default=0.6,
+        verbose_name=_('Frequency Penalty'),
+        help_text=_('Штраф за повторение слов')
+    )
+    
     is_active = models.BooleanField(
-        _('Is Active'),
         default=True,
-        help_text=_('Only one settings instance can be active')
+        verbose_name=_('Is Active'),
+        help_text=_('Активны ли эти настройки')
     )
-    created_at = models.DateTimeField(_('Created at'), auto_now_add=True)
-    updated_at = models.DateTimeField(_('Updated at'), auto_now=True)
-    created_by = models.ForeignKey(
-        User,
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name='openai_settings',
-        verbose_name=_('Created by')
-    )
-
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
     class Meta:
         verbose_name = _('OpenAI Settings')
         verbose_name_plural = _('OpenAI Settings')
-        ordering = ['-created_at']
-
-    def clean(self):
-        """Ensure only one active settings instance exists."""
-        if self.is_active and not self.pk and OpenAISettings.objects.filter(is_active=True).exists():
-            raise ValidationError(_('There can be only one active settings instance.'))
-
-    def save(self, *args, **kwargs):
-        if self.is_active:
-            # Deactivate other settings
-            OpenAISettings.objects.exclude(pk=self.pk).update(is_active=False)
-        super().save(*args, **kwargs)
-
+        ordering = ['-is_active', '-created_at']
+    
     def __str__(self):
-        return f"OpenAI Settings {self.created_at.strftime('%Y-%m-%d %H:%M')}"
-
+        return f"OpenAI Settings ({'Active' if self.is_active else 'Inactive'})"
+    
     @classmethod
     def get_active(cls):
-        """Get the active settings instance."""
-        return cls.objects.filter(is_active=True).first() 
+        """
+        Получение активных настроек
+        """
+        return cls.objects.filter(is_active=True).first()
+    
+    def save(self, *args, **kwargs):
+        """
+        При сохранении новых активных настроек деактивируем остальные
+        """
+        if self.is_active:
+            OpenAISettings.objects.exclude(pk=self.pk).update(is_active=False)
+        super().save(*args, **kwargs) 

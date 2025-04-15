@@ -7,12 +7,17 @@ from telegram.ext import (
     Application,
     CommandHandler,
     CallbackQueryHandler,
-    ContextTypes
+    ContextTypes,
+    MessageHandler,
+    filters,
+    Defaults
 )
 from django.conf import settings
-from ..models import Post, Topic, Settings
+from asgiref.sync import sync_to_async
+from ..models import Post, Topic, Settings, OpenAISettings
 import telegram
 import nest_asyncio
+from .openai_service import OpenAIService
 
 logger = logging.getLogger(__name__)
 
@@ -25,72 +30,171 @@ class TelegramService:
     """
     
     def __init__(self):
-        settings_obj = Settings.get_active()
-        if not settings_obj:
-            raise ValueError("Telegram settings not configured. Please configure Telegram settings in admin panel.")
-        
-        self.bot_token = settings_obj.telegram_bot_token
-        self.channel_id = settings_obj.telegram_channel_id
-        self.bot = telegram.Bot(token=self.bot_token)
-        self.application = None
         self._loop = None
-
-    def setup_handlers(self):
-        """Setup command and callback handlers."""
-        self.application.add_handler(CommandHandler("start", self.start))
-        self.application.add_handler(CommandHandler("content", self.generate_content))
-        self.application.add_handler(CallbackQueryHandler(self.handle_callback))
+        self.application = None
+        self.settings = None
 
     async def start_bot(self):
-        """Start the bot."""
+        """
+        Запускает бота
+        """
         try:
-            logger.debug("Initializing bot application...")
-            # Initialize application
-            self.application = Application.builder().token(self.bot_token).build()
+            # Get settings
+            self.settings = await sync_to_async(Settings.get_active)()
+            if not self.settings or not self.settings.telegram_bot_token:
+                raise ValueError("Telegram bot token not configured")
             
-            # Setup handlers
-            self.setup_handlers()
+            logger.info("Initializing bot...")
             
-            # Start the bot
-            logger.debug("Starting bot...")
-            await self.application.initialize()
+            # Create application with default settings
+            defaults = Defaults(
+                parse_mode='HTML'
+            )
             
-            # Run polling without calling start() again
-            logger.debug("Starting polling...")
-            await self.application.run_polling(close_loop=False, drop_pending_updates=True)
+            self.application = Application.builder()\
+                .token(self.settings.telegram_bot_token)\
+                .defaults(defaults)\
+                .build()
+            
+            # Add handlers
+            self.application.add_handler(CommandHandler("start", self._start_command))
+            self.application.add_handler(CommandHandler("help", self._help_command))
+            self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_message))
+            
+            # Initialize with retries
+            max_retries = 3
+            retry_delay = 5
+            
+            for attempt in range(max_retries):
+                try:
+                    logger.info(f"Attempt {attempt + 1} to initialize bot...")
+                    await self.application.initialize()
+                    break
+                except Exception as e:
+                    if attempt == max_retries - 1:
+                        raise
+                    logger.warning(f"Initialization attempt {attempt + 1} failed: {str(e)}")
+                    await asyncio.sleep(retry_delay)
+            
+            logger.info("Starting bot polling...")
+            await self.application.run_polling(drop_pending_updates=True)
             
         except Exception as e:
-            logger.error(f"Error starting bot: {str(e)}", exc_info=True)
-            if self.application and self.application.running:
-                try:
-                    await self.application.stop()
-                except Exception as shutdown_error:
-                    logger.error(f"Error during shutdown: {str(shutdown_error)}", exc_info=True)
+            logger.error(f"Error running bot: {str(e)}", exc_info=True)
             raise
 
     def run(self):
-        """Run the bot."""
+        """
+        Запускает бота в текущем event loop
+        """
         try:
-            logger.debug("Setting up event loop...")
-            # Get or create event loop
-            try:
-                self._loop = asyncio.get_event_loop()
-            except RuntimeError:
-                self._loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(self._loop)
-            
-            # Run the bot
-            logger.debug("Running bot...")
+            self._loop = asyncio.get_event_loop()
             self._loop.run_until_complete(self.start_bot())
-            
-        except KeyboardInterrupt:
-            logger.info("Bot stopped by user")
         except Exception as e:
-            logger.error(f"Error running bot: {str(e)}", exc_info=True)
+            logger.error(f"Error in run: {str(e)}", exc_info=True)
             raise
         finally:
             if self._loop and self._loop.is_running():
                 self._loop.stop()
+            if self.application:
+                self._loop.run_until_complete(self.application.stop())
+            if self._loop:
+                self._loop.close()
+
+    async def _start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Обработчик команды /start
+        """
+        await update.message.reply_text(
+            "Привет! Я бот для генерации контента. "
+            "Отправь мне тему, и я помогу сгенерировать статью."
+        )
+
+    async def _help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Обработчик команды /help
+        """
+        await update.message.reply_text(
+            "Я могу помочь сгенерировать контент на заданную тему. "
+            "Просто отправь мне тему, и я создам статью."
+        )
+
+    async def _handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle incoming messages."""
+        try:
+            message = update.message
+            if not message or not message.text:
+                return
+
+            # Get OpenAI settings
+            openai_settings = await sync_to_async(OpenAISettings.get_active)()
+            if not openai_settings or not openai_settings.api_key:
+                await message.reply_text(
+                    "⚠️ OpenAI API ключ не настроен. Пожалуйста, настройте API ключ в админ-панели."
+                )
+                return
+
+            # Create a random topic
+            topic = await sync_to_async(Topic.objects.order_by('?').first)()
+            if not topic:
+                await message.reply_text(
+                    "⚠️ Нет доступных тем. Пожалуйста, добавьте темы в админ-панели."
+                )
+                return
+
+            # Create a post
+            post = await sync_to_async(Post.objects.create)(
+                topic=topic,
+                status='draft',
+                author=message.from_user.username or str(message.from_user.id)
+            )
+
+            # Format prompt for content generation
+            prompt = f"""
+            Напиши статью на тему "{topic.title}" на русском языке.
+            {f"Дополнительная информация: {topic.description}" if topic.description else ""}
+            
+            Требования к статье:
+            1. Информативная и полезная
+            2. Хорошо структурированная
+            3. Легко читаемая
+            4. Без технических ошибок
+            
+            Формат вывода:
+            # Заголовок
+            
+            Введение (2-3 предложения)
+            
+            Основная часть (3-4 абзаца)
+            
+            Заключение (2-3 предложения)
+            """
+
+            # Generate content
+            content = self.openai_service.generate_content(
+                prompt=prompt,
+                api_key=openai_settings.api_key
+            )
+
+            if not content:
+                await message.reply_text(
+                    "❌ Не удалось сгенерировать контент. Пожалуйста, попробуйте позже."
+                )
+                return
+
+            # Update post with generated content
+            post.content = content
+            post.status = 'published'
+            await sync_to_async(post.save)()
+
+            # Send the generated content to the user
+            await message.reply_text(content)
+
+        except Exception as e:
+            logger.error(f"Error handling message: {str(e)}")
+            await message.reply_text(
+                "❌ Произошла ошибка при обработке вашего запроса. Пожалуйста, попробуйте позже."
+            )
 
     def send_message(self, text, parse_mode='HTML'):
         """
@@ -113,18 +217,6 @@ class TelegramService:
             parse_mode=parse_mode
         )
 
-    async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle the /start command."""
-        welcome_text = (
-            "👋 Welcome to Content Generator Bot!\n\n"
-            "Available commands:\n"
-            "/content - Generate random content\n"
-            "/checklist - Generate checklist content\n"
-            "/mistake - Generate common mistakes content\n"
-            "/lang - Switch language (ru/en)"
-        )
-        await update.message.reply_text(welcome_text)
-
     async def generate_content(
         self,
         update: Update,
@@ -134,25 +226,34 @@ class TelegramService:
         """Generate content based on type."""
         try:
             # Get random topic from database
-            topic = Topic.objects.order_by('?').first()
+            topic = await sync_to_async(Topic.objects.order_by('?').first)()
             if not topic:
                 await update.message.reply_text("No topics available in database.")
                 return
 
+            # Get OpenAI settings
+            openai_settings = await sync_to_async(OpenAISettings.get_active)()
+            if not openai_settings or not openai_settings.api_key:
+                raise ValueError("OpenAI API key not configured")
+
             # Generate content using OpenAI
-            from .openai_service import OpenAIService
-            content = OpenAIService.generate_content(
-                topic=topic.name,
-                description=topic.description,
-                language=topic.language if hasattr(topic, 'language') else 'ru'
-            )
+            try:
+                content = OpenAIService.generate_content(
+                    topic=topic.name,
+                    description=topic.description,
+                    language=topic.language if hasattr(topic, 'language') else 'ru',
+                    api_key=openai_settings.api_key
+                )
+            except Exception as e:
+                logger.error(f"OpenAI error: {str(e)}")
+                raise ValueError(f"Ошибка при генерации контента: {str(e)}")
 
             if not content:
                 await update.message.reply_text("Failed to generate content.")
                 return
 
             # Create post in database
-            post = Post.objects.create(
+            post = await sync_to_async(Post.objects.create)(
                 topic=topic,
                 content=content,
                 language=topic.language if hasattr(topic, 'language') else 'ru',
@@ -185,19 +286,33 @@ class TelegramService:
         await query.answer()
 
         action, post_id = query.data.split('_')
-        post = Post.objects.get(id=post_id)
+        post = await sync_to_async(Post.objects.get)(id=post_id)
 
         if action == "regenerate":
+            # Get OpenAI settings
+            openai_settings = await sync_to_async(OpenAISettings.get_active)()
+            if not openai_settings or not openai_settings.api_key:
+                raise ValueError("OpenAI API key not configured")
+
             # Regenerate content
-            from .openai_service import OpenAIService
-            new_content = OpenAIService.generate_content(
-                topic=post.topic.name,
-                description=post.topic.description,
-                language=post.language
-            )
+            try:
+                new_content = OpenAIService.generate_content(
+                    topic=post.topic.name,
+                    description=post.topic.description,
+                    language=post.language,
+                    api_key=openai_settings.api_key
+                )
+            except Exception as e:
+                logger.error(f"OpenAI error: {str(e)}")
+                await query.edit_message_text(
+                    text=f"Ошибка при генерации контента: {str(e)}",
+                    reply_markup=query.message.reply_markup
+                )
+                return
+
             if new_content:
                 post.content = new_content
-                post.save()
+                await sync_to_async(post.save)()
                 await query.edit_message_text(
                     text=new_content,
                     reply_markup=query.message.reply_markup
@@ -212,7 +327,7 @@ class TelegramService:
                 )
                 post.telegram_message_id = message.message_id
                 post.status = 'published'
-                post.save()
+                await sync_to_async(post.save)()
                 await query.edit_message_text(
                     text=f"{post.content}\n\n✅ Published to channel!",
                     reply_markup=None
