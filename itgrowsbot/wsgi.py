@@ -1,5 +1,5 @@
 """
-WSGI config for content_generator project.
+WSGI config for itgrowsbot project.
 
 It exposes the WSGI callable as a module-level variable named ``application``.
 
@@ -11,6 +11,6 @@ import os
 
 from django.core.wsgi import get_wsgi_application
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'content_generator.settings')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'itgrowsbot.settings')
 
 application = get_wsgi_application() 

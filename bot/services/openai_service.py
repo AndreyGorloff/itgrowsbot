@@ -9,6 +9,7 @@ from openai import OpenAI, APIError
 from ..models import OpenAISettings
 from .ollama_service import OllamaService
 import requests
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -21,90 +22,113 @@ class OpenAIService:
         self.ollama_service = OllamaService()
         self.settings = OpenAISettings.get_active()
         self.cache_timeout = 24 * 60 * 60  # 24 hours
-        self.ollama_url = "http://localhost:11434/api/generate"
-        self.ollama_model = "tinyllama"
+        self.ollama_url = os.getenv('OLLAMA_API_URL', 'http://ollama:11434')
+        self.default_ollama_model = "tinyllama"  # Default model if none specified
     
     @staticmethod
-    def get_client():
+    def get_client(api_key: Optional[str] = None):
         """Get OpenAI client with settings from database."""
         openai_settings = OpenAISettings.get_active()
-        if not openai_settings or not openai_settings.api_key:
-            raise ValueError("OpenAI API key not configured")
+        if not openai_settings or not (api_key or openai_settings.api_key):
+            raise ValueError("OpenAI API key not configured in admin panel")
         
-        return OpenAI(api_key=openai_settings.api_key)
+        return OpenAI(api_key=api_key or openai_settings.api_key)
 
     @staticmethod
     def _get_cache_key(prompt: str) -> str:
         """Generate a safe cache key using MD5 hash."""
         return hashlib.md5(prompt.encode()).hexdigest()
 
-    def _generate_with_openai(self, prompt: str, api_key: Optional[str] = None) -> Optional[str]:
-        """Try to generate content using OpenAI API."""
-        try:
-            client = OpenAI(api_key=api_key or os.getenv('OPENAI_API_KEY'))
-            
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo-0125",
-                messages=[
+    def _generate_with_openai(self, prompt: str, api_key: str) -> str:
+        """
+        Генерирует контент с использованием OpenAI API
+        """
+        if not api_key:
+            raise ValueError("OpenAI API key not provided")
+        
+        client = httpx.Client(
+            base_url="https://api.openai.com/v1",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
+            }
+        )
+        
+        response = client.post(
+            "/chat/completions",
+            json={
+                "model": "gpt-3.5-turbo",
+                "messages": [
                     {"role": "system", "content": "You are a helpful assistant that generates content in Russian."},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=500,
-                temperature=0.7,
-                presence_penalty=0.6,
-                frequency_penalty=0.6,
-                top_p=0.9
-            )
-            
-            return response.choices[0].message.content
-        except APIError as e:
-            logger.error(f"OpenAI API error: {str(e)}")
-            return None
-        except Exception as e:
-            logger.error(f"Error generating content with OpenAI: {str(e)}")
-            return None
+                "temperature": self.settings.temperature,
+                "max_tokens": self.settings.max_tokens,
+                "top_p": self.settings.top_p,
+                "presence_penalty": self.settings.presence_penalty,
+                "frequency_penalty": self.settings.frequency_penalty
+            }
+        )
+        
+        if response.status_code != 200:
+            raise Exception(f"OpenAI API error: {response.text}")
+        
+        return response.json()["choices"][0]["message"]["content"]
 
-    def _generate_with_ollama(self, prompt: str) -> Optional[str]:
-        """Generate content using local Ollama model."""
-        try:
-            response = requests.post(
-                self.ollama_url,
-                json={
-                    "model": self.ollama_model,
-                    "prompt": prompt,
-                    "stream": False
+    def _generate_with_ollama(self, prompt: str) -> str:
+        """
+        Генерирует контент с использованием локальной модели Ollama
+        """
+        client = httpx.Client(base_url=self.ollama_url)
+        
+        # Use the model from settings or fall back to default
+        model_name = self.settings.local_model_name if self.settings and self.settings.local_model_name else self.default_ollama_model
+        
+        response = client.post(
+            "/api/generate",
+            json={
+                "model": model_name,
+                "prompt": prompt,
+                "stream": False,
+                "options": {
+                    "temperature": self.settings.temperature if self.settings else 0.7,
+                    "top_p": self.settings.top_p if self.settings else 0.9,
+                    "num_predict": self.settings.max_tokens if self.settings else 500
                 }
-            )
-            response.raise_for_status()
-            return response.json().get("response")
-        except Exception as e:
-            logger.error(f"Error generating content with Ollama: {str(e)}")
-            return None
+            }
+        )
+        
+        if response.status_code != 200:
+            raise Exception(f"Ollama API error: {response.text}")
+        
+        return response.json()["response"]
 
     def generate_content(self, prompt: str, api_key: Optional[str] = None) -> Optional[str]:
-        """Generate content using OpenAI API with fallback to Ollama."""
-        cache_key = self._get_cache_key(prompt)
-        
-        # Try to get from cache first
-        cached_content = cache.get(cache_key)
-        if cached_content:
-            logger.info("Using cached content")
-            return cached_content
-
-        # Try OpenAI first
-        content = self._generate_with_openai(prompt, api_key)
-        
-        # If OpenAI fails, try Ollama
-        if content is None:
-            logger.info("Falling back to Ollama model")
-            content = self._generate_with_ollama(prompt)
-
-        if content:
-            # Cache the result
-            cache.set(cache_key, content, self.cache_timeout)
-            return content
-
-        return None
+        """
+        Генерирует контент с использованием OpenAI API или локальной модели
+        """
+        try:
+            # Get settings if not provided
+            if not self.settings:
+                self.settings = OpenAISettings.get_active()
+            
+            # Always try OpenAI first if API key is available
+            if self.settings and self.settings.api_key:
+                try:
+                    return self._generate_with_openai(prompt, api_key or self.settings.api_key)
+                except Exception as e:
+                    logger.warning(f"OpenAI generation failed, falling back to local model: {str(e)}")
+            
+            # Fallback to local model if OpenAI failed or no API key
+            try:
+                return self._generate_with_ollama(prompt)
+            except Exception as e:
+                logger.error(f"Local model generation failed: {str(e)}")
+                return None
+            
+        except Exception as e:
+            logger.error(f"Error generating content: {str(e)}")
+            return None
 
     def get_available_models(self) -> list:
         """

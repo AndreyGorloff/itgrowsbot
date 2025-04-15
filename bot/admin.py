@@ -162,9 +162,25 @@ class SettingsAdmin(admin.ModelAdmin):
 
 @admin.register(OpenAISettings)
 class OpenAISettingsAdmin(admin.ModelAdmin):
-    list_display = ('model', 'temperature', 'max_tokens', 'is_active', 'created_at', 'updated_at')
-    list_filter = ('is_active', 'model')
-    readonly_fields = ('created_at', 'updated_at', 'created_by')
+    list_display = ('is_active', 'use_local_model', 'local_model_name', 'created_at', 'updated_at')
+    list_filter = ('is_active', 'use_local_model', 'created_at', 'updated_at')
+    readonly_fields = ('created_at', 'updated_at')
+    fieldsets = (
+        ('API Settings', {
+            'fields': ('is_active', 'api_key')
+        }),
+        ('Local Model Settings', {
+            'fields': ('use_local_model', 'local_model_name')
+        }),
+        ('Generation Parameters', {
+            'fields': ('temperature', 'max_tokens', 'top_p', 'presence_penalty', 'frequency_penalty'),
+            'classes': ('collapse',)
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
     
     def save_model(self, request, obj, form, change):
         if not obj.pk:  # Only set created_by during the first save.

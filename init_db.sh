@@ -5,13 +5,13 @@ echo "Waiting for PostgreSQL to start..."
 sleep 5
 
 # Создаем базу данных
-PGPASSWORD=postgres psql -h localhost -p 5433 -U postgres -c "CREATE DATABASE itgrowsbot;"
+PGPASSWORD=postgres psql -h db -p 5432 -U postgres -c "CREATE DATABASE itgrowsbot;"
 
 # Применяем миграции
-docker-compose exec web python manage.py migrate
+python manage.py migrate
 
 # Создаем суперпользователя
-docker-compose exec web python manage.py createsuperuser --noinput \
+python manage.py createsuperuser --noinput \
     --username=admin \
     --email=admin@example.com
 

@@ -1,204 +1,122 @@
-# Content Generator Bot
+# ITGrowsBot - Система автоматической генерации контента
 
-Telegram bot with Django admin panel for automated content generation and management.
+Система для автоматической генерации и управления контентом, состоящая из Telegram-бота и веб-админки на Django. Позволяет генерировать статьи/посты по темам из базы данных с использованием OpenAI API и локальной модели Ollama в качестве резервного варианта.
 
-## Features
+## 🚀 Основные возможности
 
-- 🤖 Telegram bot for content generation and management
-- 👩‍💼 Django admin panel for content management
-- 🎯 Topic-based content generation using OpenAI
-- 📝 Post editing and scheduling
-- 🌐 Multi-language support (ru/en)
-- 🔄 Automated posting to Telegram channel
-- 👥 Multi-user access with role-based permissions
+- Генерация контента с использованием OpenAI API и локальной модели Ollama
+- Управление темами и постами через Django-админку
+- Публикация контента в Telegram-канал
+- Многопользовательский доступ с разграничением прав
+- Автоматическая и ручная публикация постов
 
-## Tech Stack
+## 🛠 Технологии
 
-- Python 3.10+
-- Django 4.2
-- PostgreSQL
-- OpenAI API
-- Telegram Bot API
-- Celery for task scheduling
-- Redis for caching
-- Docker & Docker Compose
+- **Backend**: Django 4.x / Python 3.10+
+- **База данных**: PostgreSQL
+- **Кэширование**: Redis
+- **Асинхронные задачи**: Celery + Celery Beat
+- **Telegram-бот**: python-telegram-bot
+- **Генерация контента**: OpenAI API + Ollama (резервный вариант)
+- **Деплой**: Docker + Docker Compose
 
-## Setup with Docker
+## 📦 Установка и запуск
 
-1. Clone the repository:
+### Предварительные требования
+
+- Docker и Docker Compose
+- Доступ к OpenAI API (опционально)
+- Токен Telegram-бота
+
+### Шаги установки
+
+1. Клонируйте репозиторий:
 ```bash
-git clone https://github.com/yourusername/content-generator-bot.git
-cd content-generator-bot
+git clone https://github.com/yourusername/itgrowsbot.git
+cd itgrowsbot
 ```
 
-2. Create .env file:
-```bash
-cp .env.example .env
-# Edit .env with your settings
-```
-
-3. Build and start containers:
-```bash
-docker-compose up --build
-```
-
-4. Create superuser:
-```bash
-docker-compose exec web python manage.py createsuperuser
-```
-
-5. Access the application:
-- Django Admin: http://localhost:8000/admin/
-- API: http://localhost:8000/api/
-
-## Manual Setup (without Docker)
-
-1. Clone the repository:
-```bash
-git clone https://github.com/yourusername/content-generator-bot.git
-cd content-generator-bot
-```
-
-2. Create and activate virtual environment:
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-3. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-4. Create .env file:
+2. Создайте файл `.env` на основе `.env.example`:
 ```bash
 cp .env.example .env
-# Edit .env with your settings
 ```
 
-5. Setup database:
+3. Запустите сервисы:
 ```bash
-python manage.py migrate
+docker-compose up -d db redis ollama
 ```
 
-6. Create superuser:
+4. Инициализируйте базу данных:
 ```bash
-python manage.py createsuperuser
+./init_db.sh
 ```
 
-7. Run development server:
+5. Запустите остальные сервисы:
 ```bash
-python manage.py runserver
+docker-compose up -d web celery celery-beat bot
 ```
 
-## Environment Variables
+## 🔧 Конфигурация
 
-Create a `.env` file with the following variables:
+### Переменные окружения
 
-```
-# Django settings
-DEBUG=True
-SECRET_KEY=your-secret-key
-ALLOWED_HOSTS=localhost,127.0.0.1
+Основные переменные окружения, которые нужно настроить в файле `.env`:
 
-# Database
-DB_NAME=content_generator
-DB_USER=postgres
-DB_PASSWORD=your-password
-DB_HOST=db
-DB_PORT=5432
+- `DATABASE_URL`: URL для подключения к PostgreSQL
+- `REDIS_URL`: URL для подключения к Redis
+- `OLLAMA_API_URL`: URL для подключения к Ollama
+- `OPENAI_API_KEY`: API ключ OpenAI (опционально)
+- `TELEGRAM_BOT_TOKEN`: Токен Telegram-бота
 
-# OpenAI
-OPENAI_API_KEY=your-openai-api-key
+### Настройка через админ-панель
 
-# Telegram
-TELEGRAM_BOT_TOKEN=your-telegram-bot-token
-TELEGRAM_CHANNEL_ID=your-channel-id
+После запуска системы доступны следующие настройки через админ-панель:
 
-# Email
-EMAIL_HOST=smtp.gmail.com
-EMAIL_PORT=587
-EMAIL_HOST_USER=your-email@gmail.com
-EMAIL_HOST_PASSWORD=your-app-password
-EMAIL_USE_TLS=True
+- Управление темами для генерации контента
+- Настройка API-ключей
+- Управление пользователями и правами доступа
+- Настройка расписания публикаций
 
-# Redis
-REDIS_URL=redis://redis:6379/0
+## 📝 Использование
 
-# Celery
-CELERY_BROKER_URL=redis://redis:6379/1
-CELERY_RESULT_BACKEND=redis://redis:6379/1
-```
+### Telegram-бот
 
-## Project Structure
+Основные команды бота:
+- `/start` - Начало работы с ботом
+- `/help` - Справка по командам
+- `/content` - Сгенерировать случайный пост
+- `/lang` - Переключение языка
 
-```
-content_generator/
-├── manage.py
-├── requirements.txt
-├── Dockerfile
-├── docker-compose.yml
-├── .env
-├── content_generator/
-│   ├── __init__.py
-│   ├── settings.py
-│   ├── urls.py
-│   └── wsgi.py
-├── bot/
-│   ├── __init__.py
-│   ├── models.py
-│   ├── views.py
-│   ├── admin.py
-│   └── services/
-│       ├── openai_service.py
-│       └── telegram_service.py
-└── templates/
-    └── admin/
-        └── custom_admin/
-```
+### Админ-панель
 
-## Docker Commands
+Доступна по адресу: `http://localhost:8000/admin`
 
-- Start all services:
+Функции админ-панели:
+- Управление темами
+- Редактирование и публикация постов
+- Настройка API-ключей
+- Управление пользователями
+
+## 🔄 Резервная генерация контента
+
+Система автоматически использует локальную модель Ollama (tinyllama) в следующих случаях:
+- Отсутствует API ключ OpenAI
+- Проблемы с подключением к OpenAI API
+- Превышен лимит запросов
+
+## 🐛 Отладка
+
+Для просмотра логов используйте:
 ```bash
-docker-compose up
+docker-compose logs -f [service_name]
 ```
 
-- Start in background:
-```bash
-docker-compose up -d
-```
+Где `[service_name]` может быть:
+- `bot` - логи Telegram-бота
+- `web` - логи веб-приложения
+- `celery` - логи Celery worker
+- `celery-beat` - логи планировщика задач
 
-- Stop all services:
-```bash
-docker-compose down
-```
+## 📄 Лицензия
 
-- View logs:
-```bash
-docker-compose logs -f
-```
-
-- Rebuild containers:
-```bash
-docker-compose up --build
-```
-
-- Run migrations:
-```bash
-docker-compose exec web python manage.py migrate
-```
-
-- Create superuser:
-```bash
-docker-compose exec web python manage.py createsuperuser
-```
-
-- Access PostgreSQL:
-```bash
-docker-compose exec db psql -U postgres
-```
-
-## License
-
-MIT License
+MIT

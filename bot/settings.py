@@ -46,3 +46,15 @@ CACHES = {
 
 # Cache timeout settings
 CACHE_MIDDLEWARE_SECONDS = 60 * 60 * 24  # 24 hours 
+
+# Database settings
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'itgrowsbot',
+        'USER': 'postgres',
+        'PASSWORD': 'postgres',
+        'HOST': 'db',
+        'PORT': '5432',
+    }
+} 

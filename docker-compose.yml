@@ -44,19 +44,25 @@ services:
     command: gunicorn itgrowsbot.wsgi:application --bind 0.0.0.0:8000
     volumes:
       - .:/app
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
     ports:
       - "8000:8000"
     depends_on:
-      - db
-      - redis
-      - ollama
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
     environment:
       - DEBUG=1
       - SECRET_KEY=your-secret-key
-      - DATABASE_URL=postgres://postgres:postgres@db:5432/itgrowsbot
+      - DB_NAME=itgrowsbot
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_HOST=db
+      - DB_PORT=5432
       - REDIS_URL=redis://redis:6379/0
-      - OLLAMA_API_URL=http://ollama:11434
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - DJANGO_SETTINGS_MODULE=itgrowsbot.settings
     networks:
       - app-network
 
@@ -66,16 +72,17 @@ services:
     volumes:
       - .:/app
     depends_on:
-      - db
-      - redis
-      - ollama
+      - web
     environment:
       - DEBUG=1
       - SECRET_KEY=your-secret-key
-      - DATABASE_URL=postgres://postgres:postgres@db:5432/itgrowsbot
+      - DB_NAME=itgrowsbot
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_HOST=db
+      - DB_PORT=5432
       - REDIS_URL=redis://redis:6379/0
-      - OLLAMA_API_URL=http://ollama:11434
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - DJANGO_SETTINGS_MODULE=itgrowsbot.settings
     networks:
       - app-network
 
@@ -85,22 +92,24 @@ services:
     volumes:
       - .:/app
     depends_on:
-      - db
-      - redis
-      - ollama
+      - celery
     environment:
       - DEBUG=1
       - SECRET_KEY=your-secret-key
-      - DATABASE_URL=postgres://postgres:postgres@db:5432/itgrowsbot
+      - DB_NAME=itgrowsbot
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_HOST=db
+      - DB_PORT=5432
       - REDIS_URL=redis://redis:6379/0
-      - OLLAMA_API_URL=http://ollama:11434
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - DJANGO_SETTINGS_MODULE=itgrowsbot.settings
     networks:
       - app-network
 
   bot:
     build: .
-    command: python manage.py runbot
+    command: python manage.py run_bot
+    entrypoint: /app/bot-entrypoint.sh
     volumes:
       - .:/app
     depends_on:
@@ -110,11 +119,22 @@ services:
     environment:
       - DEBUG=1
       - SECRET_KEY=your-secret-key
-      - DATABASE_URL=postgres://postgres:postgres@db:5432/itgrowsbot
+      - DB_NAME=itgrowsbot
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_HOST=db
+      - DB_PORT=5432
       - REDIS_URL=redis://redis:6379/0
       - OLLAMA_API_URL=http://ollama:11434
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - PYTHONUNBUFFERED=1
+      - PYTHONIOENCODING=utf-8
+      - DJANGO_SETTINGS_MODULE=itgrowsbot.settings
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
       - app-network
 
@@ -122,6 +142,8 @@ volumes:
   postgres_data:
   redis_data:
   ollama_data:
+  static_volume:
+  media_volume:
 
 networks:
   app-network:

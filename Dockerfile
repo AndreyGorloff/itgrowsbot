@@ -33,4 +33,4 @@ RUN mkdir -p /app/staticfiles /app/media /app/static
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
 
 # Run gunicorn
-CMD ["gunicorn", "content_generator.wsgi:application", "--bind", "0.0.0.0:8000"] 
+CMD ["gunicorn", "itgrowsbot.wsgi:application", "--bind", "0.0.0.0:8000"] 

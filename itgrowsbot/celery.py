@@ -3,9 +3,9 @@ from celery import Celery
 from django.conf import settings
 
 # Set the default Django settings module for the 'celery' program.
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'content_generator.settings')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'itgrowsbot.settings')
 
-app = Celery('content_generator')
+app = Celery('itgrowsbot')
 
 # Using a string here means the worker doesn't have to serialize
 # the configuration object to child processes.
