@@ -1,29 +1,41 @@
 #!/bin/bash
 
-# Wait for postgres
-echo "Waiting for postgres..."
-while ! nc -z $DB_HOST $DB_PORT; do
+# Exit on error
+set -e
+
+# Wait for database
+echo "Waiting for database..."
+while ! nc -z db 5432; do
   sleep 0.1
 done
-echo "PostgreSQL started"
+echo "Database is available!"
 
-# Apply database migrations
-echo "Applying database migrations..."
+# Wait for Redis
+echo "Waiting for Redis..."
+while ! nc -z redis 6379; do
+  sleep 0.1
+done
+echo "Redis is available!"
+
+# Wait for Ollama
+echo "Waiting for Ollama..."
+while ! nc -z ollama 11434; do
+  sleep 0.1
+done
+echo "Ollama is available!"
+
+# Run migrations
+echo "Running migrations..."
 python manage.py migrate
 
 # Create superuser if not exists
-echo "Creating superuser..."
-python manage.py shell << END
-from django.contrib.auth import get_user_model
-User = get_user_model()
-if not User.objects.filter(username='admin').exists():
-    User.objects.create_superuser('admin', 'admin@example.com', 'admin')
-END
+echo "Creating superuser if not exists..."
+python manage.py createsuperuser --noinput --username admin --email admin@example.com || true
 
-# Collect static files
-echo "Collecting static files..."
-python manage.py collectstatic --noinput
+# Run collectstatic script
+echo "Running collectstatic script..."
+/app/collectstatic.sh
 
-# Start server
-echo "Starting server..."
-exec "$@" 
+# Start gunicorn
+echo "Starting gunicorn..."
+exec gunicorn itgrowsbot.wsgi:application --bind 0.0.0.0:8000 --workers 4 --threads 2 --timeout 60 

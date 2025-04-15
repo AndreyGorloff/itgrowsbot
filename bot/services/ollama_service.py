@@ -15,7 +15,7 @@ class OllamaService:
     def __init__(self):
         self.api_url = os.getenv('OLLAMA_API_URL', 'http://ollama:11434')
         self.settings = OpenAISettings.get_active()
-        self.model = self.settings.local_model_name if self.settings else "llama2"
+        self.model = self.settings.local_model_name if self.settings else "tinyllama"
         
     def _get_cache_key(self, topic: str, language: str) -> str:
         """

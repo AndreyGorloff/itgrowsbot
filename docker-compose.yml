@@ -41,28 +41,24 @@ services:
 
   web:
     build: .
-    command: gunicorn itgrowsbot.wsgi:application --bind 0.0.0.0:8000
+    command: bash collectstatic.sh
     volumes:
       - .:/app
-      - static_volume:/app/staticfiles
-      - media_volume:/app/media
+      - staticfiles:/app/staticfiles
+      - ./static:/app/static
     ports:
       - "8000:8000"
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_started
     environment:
       - DEBUG=1
-      - SECRET_KEY=your-secret-key
-      - DB_NAME=itgrowsbot
-      - DB_USER=postgres
-      - DB_PASSWORD=postgres
-      - DB_HOST=db
-      - DB_PORT=5432
+      - DATABASE_URL=postgres://postgres:postgres@db:5432/itgrowsbot
       - REDIS_URL=redis://redis:6379/0
-      - DJANGO_SETTINGS_MODULE=itgrowsbot.settings
+      - OLLAMA_API_URL=http://ollama:11434
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+    depends_on:
+      - db
+      - redis
+      - ollama
     networks:
       - app-network
 
@@ -142,8 +138,7 @@ volumes:
   postgres_data:
   redis_data:
   ollama_data:
-  static_volume:
-  media_volume:
+  staticfiles:
 
 networks:
   app-network:

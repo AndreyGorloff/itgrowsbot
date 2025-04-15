@@ -81,27 +81,35 @@ class OpenAIService:
         """
         client = httpx.Client(base_url=self.ollama_url)
         
-        # Use the model from settings or fall back to default
-        model_name = self.settings.local_model_name if self.settings and self.settings.local_model_name else self.default_ollama_model
+        # Always use tinyllama as the fallback model
+        model_name = "tinyllama"
         
-        response = client.post(
-            "/api/generate",
-            json={
-                "model": model_name,
-                "prompt": prompt,
-                "stream": False,
-                "options": {
-                    "temperature": self.settings.temperature if self.settings else 0.7,
-                    "top_p": self.settings.top_p if self.settings else 0.9,
-                    "num_predict": self.settings.max_tokens if self.settings else 500
+        try:
+            response = client.post(
+                "/api/generate",
+                json={
+                    "model": model_name,
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {
+                        "temperature": self.settings.temperature if self.settings else 0.7,
+                        "top_p": self.settings.top_p if self.settings else 0.9,
+                        "num_predict": self.settings.max_tokens if self.settings else 500
+                    }
                 }
-            }
-        )
-        
-        if response.status_code != 200:
-            raise Exception(f"Ollama API error: {response.text}")
-        
-        return response.json()["response"]
+            )
+            
+            if response.status_code != 200:
+                error_msg = response.text
+                if "model not found" in error_msg.lower():
+                    raise Exception(f"Model {model_name} not found. Please ensure the model is loaded in Ollama.")
+                raise Exception(f"Ollama API error: {error_msg}")
+            
+            return response.json()["response"]
+        except httpx.RequestError as e:
+            raise Exception(f"Failed to connect to Ollama service: {str(e)}")
+        except Exception as e:
+            raise Exception(f"Error generating content with Ollama: {str(e)}")
 
     def generate_content(self, prompt: str, api_key: Optional[str] = None) -> Optional[str]:
         """
