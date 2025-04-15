@@ -81,10 +81,18 @@ class OpenAIService:
         """
         client = httpx.Client(base_url=self.ollama_url)
         
-        # Always use tinyllama as the fallback model
-        model_name = "tinyllama"
+        # Get model name from settings
+        model_name = self.ollama_service._get_model_name()
+        logger.info(f"Using model {model_name} for content generation")
         
         try:
+            # First check if model is available
+            if not self.ollama_service.is_model_available(model_name):
+                logger.warning(f"Model {model_name} not found, attempting to pull...")
+                success = self.ollama_service.pull_model(model_name)
+                if not success:
+                    raise Exception(f"Failed to load model {model_name}")
+            
             response = client.post(
                 "/api/generate",
                 json={
@@ -96,7 +104,8 @@ class OpenAIService:
                         "top_p": self.settings.top_p if self.settings else 0.9,
                         "num_predict": self.settings.max_tokens if self.settings else 500
                     }
-                }
+                },
+                timeout=60
             )
             
             if response.status_code != 200:
@@ -120,19 +129,27 @@ class OpenAIService:
             if not self.settings:
                 self.settings = OpenAISettings.get_active()
             
-            # Always try OpenAI first if API key is available
-            if self.settings and self.settings.api_key:
+            # Try OpenAI first if API key is available and use_local_model is False
+            if (api_key or (self.settings and self.settings.api_key)) and not (self.settings and self.settings.use_local_model):
                 try:
                     return self._generate_with_openai(prompt, api_key or self.settings.api_key)
                 except Exception as e:
                     logger.warning(f"OpenAI generation failed, falling back to local model: {str(e)}")
+                    if not self.settings or not self.settings.use_local_model:
+                        logger.info("Attempting fallback to local model due to OpenAI failure")
             
-            # Fallback to local model if OpenAI failed or no API key
+            # Use local model if explicitly configured or as fallback
             try:
+                logger.info("Using local model for content generation")
                 return self._generate_with_ollama(prompt)
             except Exception as e:
                 logger.error(f"Local model generation failed: {str(e)}")
-                return None
+                if self.settings and self.settings.use_local_model:
+                    # If local model was explicitly configured but failed, don't try OpenAI
+                    return None
+                
+                # If we got here, both OpenAI and local model failed
+                raise Exception("Both OpenAI and local model generation failed")
             
         except Exception as e:
             logger.error(f"Error generating content: {str(e)}")
@@ -173,23 +190,28 @@ class OpenAIService:
         Генерирует статью на основе заданного топика
         """
         try:
+            if not topic:
+                raise ValueError("Topic cannot be empty")
+                
             # Определяем, какую модель использовать
             should_use_local = use_local if use_local is not None else (
                 self.settings.use_local_model if self.settings else False
             )
             
+            prompt = f"""
+            Напиши информативную статью на тему "{topic}".
+            Статья должна быть структурированной, с заголовками и подзаголовками.
+            Используй маркированные списки где это уместно.
+            Статья должна быть написана в формате HTML.
+            """
+            
             if should_use_local:
-                content = self.ollama_service.generate_content(topic=topic)
+                content = self.ollama_service.generate_content(prompt=prompt)
+                if not content:
+                    raise ValueError("Local model failed to generate content")
             else:
                 openai_settings = self.get_settings()
                 client = self.get_client()
-                
-                prompt = f"""
-                Напиши информативную статью на тему "{topic}".
-                Статья должна быть структурированной, с заголовками и подзаголовками.
-                Используй маркированные списки где это уместно.
-                Статья должна быть написана в формате HTML.
-                """
                 
                 response = client.chat.completions.create(
                     model="gpt-3.5-turbo-0125",
@@ -204,14 +226,22 @@ class OpenAIService:
                     top_p=self.settings.top_p if self.settings else 0.9
                 )
                 
+                if not response.choices:
+                    raise ValueError("OpenAI API returned no choices")
+                    
                 content = response.choices[0].message.content
+                if not content:
+                    raise ValueError("OpenAI API returned empty content")
             
             # Извлекаем заголовок из первого h1 или h2 тега
             title = topic
-            if "<h1>" in content:
+            if content and "<h1>" in content:
                 title = content.split("<h1>")[1].split("</h1>")[0]
-            elif "<h2>" in content:
+            elif content and "<h2>" in content:
                 title = content.split("<h2>")[1].split("</h2>")[0]
+            
+            if not content:
+                raise ValueError("Generated content is empty")
             
             return {
                 'title': title,

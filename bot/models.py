@@ -23,6 +23,7 @@ class Post(models.Model):
         ('draft', _('Draft')),
         ('published', _('Published')),
         ('failed', _('Failed')),
+        ('generating', _('Generating')),
     ]
 
     LANGUAGE_CHOICES = [
@@ -48,6 +49,11 @@ class Post(models.Model):
         max_length=10,
         choices=STATUS_CHOICES,
         default='draft'
+    )
+    progress = models.IntegerField(
+        _('Generation Progress'),
+        default=0,
+        help_text=_('Progress of content generation (0-100)')
     )
     created_by = models.ForeignKey(
         User,
@@ -143,7 +149,7 @@ class OpenAISettings(models.Model):
     
     local_model_name = models.CharField(
         max_length=100,
-        default='llama2',
+        default='tinyllama',
         verbose_name=_('Local Model Name'),
         help_text=_('Название локальной модели Ollama')
     )
@@ -209,4 +215,51 @@ class OpenAISettings(models.Model):
         """
         if self.is_active:
             OpenAISettings.objects.exclude(pk=self.pk).update(is_active=False)
+        super().save(*args, **kwargs)
+
+class OllamaModel(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    is_installed = models.BooleanField(default=False)
+    size = models.CharField(max_length=50, blank=True, null=True)
+    last_updated = models.DateTimeField(auto_now=True)
+    is_active = models.BooleanField(default=True)
+    details = models.JSONField(default=dict, blank=True, null=True)
+    
+    class Meta:
+        verbose_name = _('Ollama Model')
+        verbose_name_plural = _('Ollama Models')
+        ordering = ['name']
+    
+    def __str__(self):
+        return f"{self.name} ({'installed' if self.is_installed else 'not installed'})"
+    
+    def get_model_status(self):
+        if not self.is_installed:
+            return "Not Installed"
+        if not self.is_active:
+            return "Inactive"
+        return "Active"
+    
+    def get_model_size_display(self):
+        if not self.size:
+            return "Unknown"
+        try:
+            size_bytes = int(self.size)
+            if size_bytes < 1024:
+                return f"{size_bytes} B"
+            elif size_bytes < 1024 * 1024:
+                return f"{size_bytes / 1024:.1f} KB"
+            elif size_bytes < 1024 * 1024 * 1024:
+                return f"{size_bytes / (1024 * 1024):.1f} MB"
+            else:
+                return f"{size_bytes / (1024 * 1024 * 1024):.1f} GB"
+        except (ValueError, TypeError):
+            return self.size
+
+    def save(self, *args, **kwargs):
+        """
+        При сохранении новой активной модели деактивируем остальные
+        """
+        if self.is_active:
+            OllamaModel.objects.exclude(pk=self.pk).update(is_active=False)
         super().save(*args, **kwargs) 

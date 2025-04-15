@@ -39,15 +39,14 @@ services:
     networks:
       - app-network
 
-  web:
+  migrations:
     build: .
-    command: bash collectstatic.sh
+    command: >
+      bash -c "python manage.py migrate &&
+               python manage.py collectstatic --noinput"
     volumes:
       - .:/app
       - staticfiles:/app/staticfiles
-      - ./static:/app/static
-    ports:
-      - "8000:8000"
     environment:
       - DEBUG=1
       - DATABASE_URL=postgres://postgres:postgres@db:5432/itgrowsbot
@@ -62,13 +61,34 @@ services:
     networks:
       - app-network
 
+  web:
+    build: .
+    command: gunicorn itgrowsbot.wsgi:application --bind 0.0.0.0:8000
+    volumes:
+      - .:/app
+      - staticfiles:/app/staticfiles
+      - ./static:/app/static
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=1
+      - DATABASE_URL=postgres://postgres:postgres@db:5432/itgrowsbot
+      - REDIS_URL=redis://redis:6379/0
+      - OLLAMA_API_URL=http://ollama:11434
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+    depends_on:
+      - migrations
+    networks:
+      - app-network
+
   celery:
     build: .
     command: celery -A itgrowsbot worker -l INFO
     volumes:
       - .:/app
     depends_on:
-      - web
+      - migrations
     environment:
       - DEBUG=1
       - SECRET_KEY=your-secret-key
@@ -88,7 +108,7 @@ services:
     volumes:
       - .:/app
     depends_on:
-      - celery
+      - migrations
     environment:
       - DEBUG=1
       - SECRET_KEY=your-secret-key
@@ -109,9 +129,7 @@ services:
     volumes:
       - .:/app
     depends_on:
-      - db
-      - redis
-      - ollama
+      - migrations
     environment:
       - DEBUG=1
       - SECRET_KEY=your-secret-key
@@ -123,6 +141,7 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - OLLAMA_API_URL=http://ollama:11434
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - PYTHONUNBUFFERED=1
       - PYTHONIOENCODING=utf-8
       - DJANGO_SETTINGS_MODULE=itgrowsbot.settings
