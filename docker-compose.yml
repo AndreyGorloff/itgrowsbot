@@ -39,31 +39,9 @@ services:
     networks:
       - app-network
 
-  migrations:
-    build: .
-    command: >
-      bash -c "python manage.py migrate &&
-               python manage.py collectstatic --noinput"
-    volumes:
-      - .:/app
-      - staticfiles:/app/staticfiles
-    environment:
-      - DEBUG=1
-      - DATABASE_URL=postgres://postgres:postgres@db:5432/itgrowsbot
-      - REDIS_URL=redis://redis:6379/0
-      - OLLAMA_API_URL=http://ollama:11434
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-    depends_on:
-      - db
-      - redis
-      - ollama
-    networks:
-      - app-network
-
   web:
     build: .
-    command: gunicorn itgrowsbot.wsgi:application --bind 0.0.0.0:8000
+    command: bash collectstatic.sh
     volumes:
       - .:/app
       - staticfiles:/app/staticfiles
@@ -78,7 +56,9 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
     depends_on:
-      - migrations
+      - db
+      - redis
+      - ollama
     networks:
       - app-network
 
@@ -88,16 +68,12 @@ services:
     volumes:
       - .:/app
     depends_on:
-      - migrations
+      - web
     environment:
       - DEBUG=1
-      - SECRET_KEY=your-secret-key
-      - DB_NAME=itgrowsbot
-      - DB_USER=postgres
-      - DB_PASSWORD=postgres
-      - DB_HOST=db
-      - DB_PORT=5432
+      - DATABASE_URL=postgres://postgres:postgres@db:5432/itgrowsbot
       - REDIS_URL=redis://redis:6379/0
+      - OLLAMA_API_URL=http://ollama:11434
       - DJANGO_SETTINGS_MODULE=itgrowsbot.settings
     networks:
       - app-network
@@ -108,16 +84,12 @@ services:
     volumes:
       - .:/app
     depends_on:
-      - migrations
+      - celery
     environment:
       - DEBUG=1
-      - SECRET_KEY=your-secret-key
-      - DB_NAME=itgrowsbot
-      - DB_USER=postgres
-      - DB_PASSWORD=postgres
-      - DB_HOST=db
-      - DB_PORT=5432
+      - DATABASE_URL=postgres://postgres:postgres@db:5432/itgrowsbot
       - REDIS_URL=redis://redis:6379/0
+      - OLLAMA_API_URL=http://ollama:11434
       - DJANGO_SETTINGS_MODULE=itgrowsbot.settings
     networks:
       - app-network
@@ -129,7 +101,9 @@ services:
     volumes:
       - .:/app
     depends_on:
-      - migrations
+      - db
+      - redis
+      - ollama
     environment:
       - DEBUG=1
       - SECRET_KEY=your-secret-key
@@ -141,7 +115,6 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - OLLAMA_API_URL=http://ollama:11434
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - PYTHONUNBUFFERED=1
       - PYTHONIOENCODING=utf-8
       - DJANGO_SETTINGS_MODULE=itgrowsbot.settings
