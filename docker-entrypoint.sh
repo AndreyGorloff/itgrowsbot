@@ -38,4 +38,4 @@ echo "Running collectstatic script..."
 
 # Start gunicorn
 echo "Starting gunicorn..."
-exec gunicorn itgrowsbot.wsgi:application --bind 0.0.0.0:8000 --workers 4 --threads 2 --timeout 60 
+exec gunicorn itgrowsbot.wsgi:application --bind 0.0.0.0:8000 --workers 4 --threads 2 --timeout 60 --log-level debug

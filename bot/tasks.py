@@ -1,12 +1,12 @@
+import logging
+import random
+
 from celery import shared_task
 from django.utils import timezone
-from .models import Post, Topic, OpenAISettings, OllamaModel, Settings, SchedulerSettings
+
+from .models import Post, Topic, OpenAISettings, OllamaModel, SchedulerSettings
 from .services.openai_service import OpenAIService
 from .services.telegram_service import TelegramService
-from django.contrib.auth import get_user_model
-import logging
-from datetime import datetime, timedelta
-import random
 
 logger = logging.getLogger(__name__)
 
@@ -255,4 +255,9 @@ def generate_scheduled_content():
 
     except Exception as e:
         logger.error(f"Error in generate_scheduled_content task: {str(e)}")
-        return False 
+        return False
+
+@shared_task
+def test_task():
+    print("🔥 test_task выполнена!")
+    return "It works!"

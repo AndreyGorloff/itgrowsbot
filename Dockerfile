@@ -37,9 +37,3 @@ ENV DJANGO_SETTINGS_MODULE=itgrowsbot.settings
 
 # Set entrypoint
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
-
-# Run collectstatic script
-CMD ["/app/collectstatic.sh"]
-
-# Run gunicorn
-CMD ["gunicorn", "itgrowsbot.wsgi:application", "--bind", "0.0.0.0:8000"] 
